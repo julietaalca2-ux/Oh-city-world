@@ -31,7 +31,7 @@
     position:absolute; right:12px; top:104px; width:132px; height:100px;
     border-radius:10px; border:2px solid #ffffff99; background:#182335;
   }
-  #hint { position:absolute; left:50%; bottom:20px; transform:translateX(-50%); text-align:center; font-size:12px; }
+  #rotateNotice { display:none; position:fixed; z-index:8; inset:0; align-items:center; justify-content:center; text-align:center; padding:30px; background:#101827f2; color:white; font-size:22px; font-weight:800; }
   #controls { position:absolute; inset:0; }
   #stick {
     pointer-events:auto; position:absolute; left:22px; bottom:24px; width:128px; height:128px;
@@ -61,23 +61,30 @@
     background:#19ad70; color:white; font-size:16px; font-weight:900; }
   #toast { position:absolute; left:50%; top:26%; transform:translateX(-50%);
     background:#081321dd; padding:10px 16px; border-radius:12px; opacity:0; transition:opacity .2s; }
-  @media (max-width:600px) {
-    #mission { top:67px; max-width:70vw; }
-    #map { top:118px; width:112px; height:86px; }
-    #stats { font-size:13px; }
-    #hint { bottom:164px; width:90%; }
+  @media (max-width:900px) {
+    #mission { top:12px; max-width:34vw; }
+    #map { top:82px; width:100px; height:74px; }
+    #stats { font-size:12px; }
+    #stick { width:112px; height:112px; left:16px; bottom:14px; }
+    #nub { left:29px; top:29px; }
+    .action { right:14px; bottom:16px; width:68px; height:68px; }
+    #run { right:94px; bottom:32px; width:54px; height:54px; }
+    #mapBtn { right:14px; top:166px; }
+  }
+  @media (orientation:portrait) and (max-width:900px) {
+    #rotateNotice { display:flex; }
   }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
+<div id="rotateNotice">↻ Girá el teléfono para jugar en horizontal</div>
 
 <div id="hud">
-  <div id="brand" class="panel">OG CITY <small>VERSIÓN 0.6 · MUNDO ABIERTO</small></div>
+  <div id="brand" class="panel">OG CITY</div>
   <div id="stats" class="panel">DINERO <span id="money">$0</span><br>ESTRELLAS <span id="wanted">☆ ☆ ☆</span><br>VEHÍCULO <span id="vehicle">A PIE</span></div>
   <div id="mission" class="panel"><strong id="missionTitle">MISIÓN: PRIMEROS PASOS</strong><div id="missionText">Encontrá los billetes verdes por la ciudad.</div></div>
   <canvas id="map"></canvas>
-  <div id="hint" class="panel">Joystick para moverte · ACCIÓN para entrar/salir de autos</div>
   <div id="toast"></div>
   <div id="controls">
     <div id="stick"><div id="nub"></div></div>
@@ -90,8 +97,7 @@
 <div id="startScreen">
   <div id="startCard">
     <h1>OG <span>CITY</span></h1>
-    <p>Explorá la ciudad desde arriba. Caminá, corré, manejá autos y juntá dinero para completar tu primera misión.</p>
-    <p><b>PC:</b> WASD o flechas para moverte · E para entrar/salir · Shift para correr.</p>
+    <p>La ciudad está abierta. Elegí tu camino.</p>
     <button id="play">JUGAR</button>
   </div>
 </div>
@@ -124,6 +130,7 @@
   const people = [];
   const cash = [];
   const parks = [];
+  const stains = [];
 
   const rand = (min, max) => min + Math.random() * (max - min);
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -176,7 +183,7 @@
     }
 
     for (let i = 0; i < 34; i++) {
-      people.push({ x: rand(80, WORLD.width - 80), y: rand(80, WORLD.height - 80), angle: rand(0, Math.PI * 2), timer: rand(1, 4), color: ["#f5c6a5", "#f6df78", "#b8d7f0", "#d8a6df"][i % 4] });
+      people.push({ x: rand(80, WORLD.width - 80), y: rand(80, WORLD.height - 80), angle: rand(0, Math.PI * 2), timer: rand(1, 4), skin: ["#f1c7a5", "#d99b72", "#9b684c", "#f0d2b6"][i % 4], shirt: ["#e74c3c", "#3498db", "#f1c40f", "#9b59b6", "#2ecc71", "#ecf0f1"][i % 6], pants: ["#26364a", "#34495e", "#493b35", "#202a36"][i % 4] });
     }
 
     for (let i = 0; i < 24; i++) {
@@ -267,13 +274,20 @@
       }
     }
 
-    for (const person of people) {
+    for (let i = people.length - 1; i >= 0; i--) {
+      const person = people[i];
       person.timer -= dt;
       if (person.timer <= 0) { person.angle += rand(-1.8, 1.8); person.timer = rand(1, 4); }
       const nx = person.x + Math.cos(person.angle) * 18 * dt;
       const ny = person.y + Math.sin(person.angle) * 18 * dt;
       if (!isBlocked(nx, ny, 7)) { person.x = nx; person.y = ny; }
       else person.angle += Math.PI * .7;
+
+      if (player.inCar && distance(player.inCar, person) < 24) {
+        stains.push({ x: person.x, y: person.y, size: rand(13, 20) });
+        people.splice(i, 1);
+        toast("¡Atropello!");
+      }
     }
 
     for (const item of cash) {
@@ -360,12 +374,19 @@
       ctx.fillText("$", item.x, item.y + 5);
     }
 
-    for (const person of people) {
-      ctx.fillStyle = "#00000040";
-      ctx.beginPath(); ctx.ellipse(person.x, person.y + 7, 8, 5, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = person.color;
-      ctx.beginPath(); ctx.arc(person.x, person.y, 7, 0, Math.PI * 2); ctx.fill();
+    for (const stain of stains) {
+      ctx.fillStyle = "#8f101b";
+      ctx.beginPath();
+      ctx.ellipse(stain.x, stain.y, stain.size, stain.size * .62, .25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#c52232";
+      ctx.beginPath();
+      ctx.arc(stain.x - stain.size * .28, stain.y - 2, stain.size * .34, 0, Math.PI * 2);
+      ctx.arc(stain.x + stain.size * .3, stain.y + 2, stain.size * .25, 0, Math.PI * 2);
+      ctx.fill();
     }
+
+    for (const person of people) drawHuman(person);
 
     for (const car of cars) drawCar(car);
 
@@ -383,6 +404,44 @@
       ctx.fillRect(3, -3, 10, 6);
       ctx.restore();
     }
+    ctx.restore();
+  }
+
+  function drawHuman(person) {
+    ctx.save();
+    ctx.translate(person.x, person.y);
+    ctx.rotate(person.angle);
+    // Shadow
+    ctx.fillStyle = "#00000045";
+    ctx.beginPath(); ctx.ellipse(0, 8, 9, 5, 0, 0, Math.PI * 2); ctx.fill();
+    // Legs and shoes
+    ctx.strokeStyle = person.pants;
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-2, 1); ctx.lineTo(-4, 8);
+    ctx.moveTo(2, 1); ctx.lineTo(4, 8);
+    ctx.stroke();
+    ctx.fillStyle = "#252a31";
+    ctx.fillRect(-7, 6, 5, 3);
+    ctx.fillRect(2, 6, 5, 3);
+    // Arms
+    ctx.strokeStyle = person.skin;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-5, -3); ctx.lineTo(-9, 2);
+    ctx.moveTo(5, -3); ctx.lineTo(9, 2);
+    ctx.stroke();
+    // Body/clothes
+    ctx.fillStyle = person.shirt;
+    ctx.beginPath();
+    ctx.roundRect(-6, -7, 12, 13, 4);
+    ctx.fill();
+    // Head and hair
+    ctx.fillStyle = person.skin;
+    ctx.beginPath(); ctx.arc(0, -10, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#38271f";
+    ctx.beginPath(); ctx.arc(0, -12, 4.8, Math.PI, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
 
@@ -443,6 +502,12 @@
 
   $("play").addEventListener("click", () => {
     $("startScreen").style.display = "none";
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock("landscape").catch(() => {});
+    }
     running = true;
     lastTime = performance.now();
     requestAnimationFrame(frame);
